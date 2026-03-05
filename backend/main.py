@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 load_dotenv()
-
+from chat_router import router as chat_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -25,6 +25,7 @@ app.add_middleware(
 Base.metadata.create_all(bind=engine)
 
 app.include_router(auth_router)
+app.include_router(chat_router)
 
 @app.get("/")
 def root():

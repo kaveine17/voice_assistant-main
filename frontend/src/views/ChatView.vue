@@ -60,7 +60,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-
+import { chat, type ChatMessage } from '../services/chat'
 type Role = 'user' | 'assistant'
 type Msg = { id: string; role: Role; text: string }
 
@@ -103,13 +103,21 @@ async function send() {
 
   try {
     // Пока мок-ответ. Потом заменим на реальный fetch к backend.
-    await new Promise((r) => setTimeout(r, 450))
+    const payload: ChatMessage[] = [
+  { role: 'system', content: 'Ты дружелюбный ассистент.' },
+  ...messages.value.map((m): ChatMessage => ({
+    role: m.role === 'user' ? 'user' : 'assistant',
+    content: m.text,
+  })),
+]
 
-    messages.value.push({
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      text: `Понял: “${text}”. (Пока мок, скоро подключим ChatGPT API)`,
-    })
+const { reply } = await chat(payload, 0.7)
+
+messages.value.push({
+  id: crypto.randomUUID(),
+  role: 'assistant',
+  text: reply,
+})
   } finally {
     sending.value = false
     await scrollToBottom()
