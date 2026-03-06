@@ -1,10 +1,11 @@
 @use "../variables" as v;
 
 .auth {
-  min-height: 100vh;
+  min-height: calc(100svh - 73px);
   display: grid;
   place-items: center;
-  padding: 24px;
+  align-content: center;
+  padding: 24px 16px 32px;
 
   background:
     radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.22), transparent 55%),
@@ -24,7 +25,9 @@
 }
 
 .auth__top {
-  margin-bottom: 10px;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto 8px;
 }
 
 .auth__back {

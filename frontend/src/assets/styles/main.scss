@@ -2,16 +2,24 @@
 @use "./variables" as v;
 @use "./mixins";
 @use "./pages/auth";
+html,
+body,
+#app {
+  min-height: 100%;
+  margin: 0;
+}
 
-.page {
-  min-height: 100vh;
-  padding: 24px;
-  @include mixins.center;
-
+body {
+  overflow-x: hidden;
   background:
     radial-gradient(1200px 600px at 20% 10%, #cfe3ff 0%, transparent 60%),
     radial-gradient(1000px 500px at 80% 90%, #c9ffe4 0%, transparent 55%),
     linear-gradient(135deg, v.$bg1, v.$bg2);
+}
+.page {
+  min-height: calc(100svh - 73px);
+  padding: 24px;
+  @include mixins.center;
 }
 
 .card {

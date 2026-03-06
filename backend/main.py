@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import models 
 from database import Base, engine
 from auth_router import router as auth_router
-
+#uvicorn main:app --reload --port 8000
 app = FastAPI()
 
 

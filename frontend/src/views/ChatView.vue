@@ -1,234 +1,288 @@
 <template>
-  <div class="page">
-    <div class="card chat">
-      <div class="chat__top">
-        <div>
-          <div class="badge">Диалог</div>
-          <h1 class="title">Чат ассистента</h1>
-          <p class="subtitle">Пока без бэка: ответы моковые. Дальше подключим STT и ChatGPT.</p>
-        </div>
+  <div class="chat-page">
+    <aside class="chat-sidebar">
+      <div class="chat-sidebar__top">
+        <button class="btn btn--primary chat-sidebar__new" @click="createNewConversation">
+          + Новый чат
+        </button>
+      </div>
 
-        <div class="chat__top-actions">
-          <button class="btn btn--ghost" @click="goHome">На главную</button>
+      <div class="chat-sidebar__list">
+        <button
+          v-for="conversation in conversations"
+          :key="conversation.id"
+          class="chat-sidebar__item"
+          :class="{ 'chat-sidebar__item--active': conversation.id === activeConversationId }"
+          @click="selectConversation(conversation.id)"
+        >
+          <div class="chat-sidebar__title">{{ conversation.title }}</div>
+          <div class="chat-sidebar__date">{{ formatDate(conversation.created_at) }}</div>
+        </button>
+
+        <div v-if="!conversations.length" class="chat-sidebar__empty">
+          Пока нет чатов
+        </div>
+      </div>
+    </aside>
+
+    <section class="chat-main">
+      <div class="chat-main__header">
+        <div>
+          <h1 class="chat-main__title">
+            {{ activeConversationTitle || 'Чат ассистента' }}
+          </h1>
+          <p class="chat-main__subtitle">
+            История сохраняется отдельно для каждого чата
+          </p>
         </div>
       </div>
 
-      <div class="chat__window" ref="windowRef">
-        <div
-          v-for="m in messages"
-          :key="m.id"
-          class="chat__msg"
-          :class="m.role === 'user' ? 'chat__msg--user' : 'chat__msg--assistant'"
-        >
-          <div class="chat__bubble">
-            <div class="chat__role">{{ m.role === 'user' ? 'Вы' : 'Ассистент' }}</div>
-            <div class="chat__text">{{ m.text }}</div>
+      <div ref="messagesContainer" class="chat-main__messages">
+        <template v-if="messages.length">
+          <div
+            v-for="message in messages"
+            :key="message.id"
+            class="chat-message"
+            :class="{
+              'chat-message--user': message.role === 'user',
+              'chat-message--assistant': message.role === 'assistant'
+            }"
+          >
+            <div class="chat-message__bubble">
+              <div class="chat-message__role">
+                {{ message.role === 'user' ? 'Вы' : 'Ассистент' }}
+              </div>
+              <div class="chat-message__content">
+                {{ message.content }}
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <div v-else class="chat-main__empty">
+          Выберите чат или создайте новый, чтобы начать разговор
+        </div>
+
+        <div v-if="sending" class="chat-message chat-message--assistant">
+          <div class="chat-message__bubble">
+            <div class="chat-message__role">Ассистент</div>
+            <div class="chat-message__content">Печатает...</div>
           </div>
         </div>
       </div>
 
-      <div class="chat__composer">
-        <button
-          class="btn btn--ghost"
-          @click="toggleRecording"
-          :aria-pressed="recording"
-          title="Запись голоса (пока UI-заглушка)"
-        >
-          {{ recording ? '■ Стоп' : '● Запись' }}
-        </button>
-
-        <input
+      <div class="chat-main__composer">
+        <textarea
           v-model="input"
-          class="chat__input"
-          type="text"
-          placeholder="Напишите сообщение…"
-          @keydown.enter.prevent="send"
+          class="chat-main__input"
+          placeholder="Введите сообщение..."
+          rows="3"
+          @keydown.enter.prevent="handleEnter"
         />
 
-        <button class="btn btn--primary" @click="send" :disabled="!input.trim() || sending">
-          {{ sending ? '…' : 'Отправить' }}
-        </button>
-      </div>
+        <div class="chat-main__actions">
+          <button
+            class="btn btn--primary"
+            :disabled="!canSend"
+            @click="sendMessage"
+          >
+            {{ sending ? 'Отправка...' : 'Отправить' }}
+          </button>
+        </div>
 
-      <div class="chat__hint">
-        Подсказка: позже кнопка “Запись” будет отправлять аудио на <code>/api/stt</code>, а текст — на <code>/api/chat</code>.
+        <p v-if="error" class="chat-main__error">
+          {{ error }}
+        </p>
       </div>
-    </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { chat, type ChatMessage } from '../services/chat'
-type Role = 'user' | 'assistant'
-type Msg = { id: string; role: Role; text: string }
 
-const router = useRouter()
+import { computed, nextTick, onMounted, ref } from 'vue'
 
-const input = ref('')
-const sending = ref(false)
-const recording = ref(false)
-const windowRef = ref<HTMLDivElement | null>(null)
+const API = 'http://127.0.0.1:8000/api'
 
-const messages = ref<Msg[]>([
-  { id: crypto.randomUUID(), role: 'assistant', text: 'Привет! Я готов помочь. Напиши сообщение или нажми “Запись”.' },
-])
-
-function goHome() {
-  router.push('/')
+type Conversation = {
+  id: number
+  title: string
+  created_at: string
 }
 
-function toggleRecording() {
-  // Пока только UI, без WebAudio.
-  recording.value = !recording.value
-  if (recording.value) {
-    // имитация “распознанной речи” через 1.2 сек
-    setTimeout(() => {
-      if (!recording.value) return
-      recording.value = false
-      input.value = 'Привет! Это тест распознавания речи.'
-    }, 1200)
+type Message = {
+  id: number
+  conversation_id: number
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+}
+
+const conversations = ref<Conversation[]>([])
+const messages = ref<Message[]>([])
+const activeConversationId = ref<number | null>(null)
+const input = ref('')
+const loading = ref(false)
+const sending = ref(false)
+const error = ref('')
+const messagesContainer = ref<HTMLElement | null>(null)
+
+const token = localStorage.getItem('va_token')
+
+const activeConversationTitle = computed(() => {
+  return conversations.value.find(c => c.id === activeConversationId.value)?.title ?? ''
+})
+
+const canSend = computed(() => {
+  return Boolean(input.value.trim()) && Boolean(activeConversationId.value) && !sending.value
+})
+
+function authHeaders() {
+  return {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
   }
 }
 
-async function send() {
-  const text = input.value.trim()
-  if (!text || sending.value) return
-
-  messages.value.push({ id: crypto.randomUUID(), role: 'user', text })
-  input.value = ''
-  sending.value = true
-  await scrollToBottom()
+async function fetchConversations() {
+  loading.value = true
+  error.value = ''
 
   try {
-    // Пока мок-ответ. Потом заменим на реальный fetch к backend.
-    const payload: ChatMessage[] = [
-  { role: 'system', content: 'Ты дружелюбный ассистент.' },
-  ...messages.value.map((m): ChatMessage => ({
-    role: m.role === 'user' ? 'user' : 'assistant',
-    content: m.text,
-  })),
-]
+    const res = await fetch(`${API}/conversations`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
 
-const { reply } = await chat(payload, 0.7)
+    const data = await res.json()
 
-messages.value.push({
-  id: crypto.randomUUID(),
-  role: 'assistant',
-  text: reply,
-})
+    if (!res.ok) {
+      throw new Error(data?.detail ?? 'Не удалось загрузить чаты')
+    }
+
+    conversations.value = data
+
+    if (data.length && !activeConversationId.value) {
+      activeConversationId.value = data[0].id
+      await fetchMessages(data[0].id)
+    }
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'Ошибка загрузки чатов'
+  } finally {
+    loading.value = false
+  }
+}
+
+async function createNewConversation() {
+  error.value = ''
+
+  try {
+    const res = await fetch(`${API}/conversations`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ title: 'Новый чат' }),
+    })
+
+    const data = await res.json()
+
+    if (!res.ok) {
+      throw new Error(data?.detail ?? 'Не удалось создать чат')
+    }
+
+    conversations.value.unshift(data)
+    activeConversationId.value = data.id
+    messages.value = []
+    input.value = ''
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'Ошибка создания чата'
+  }
+}
+
+async function fetchMessages(conversationId: number) {
+  error.value = ''
+
+  try {
+    const res = await fetch(`${API}/conversations/${conversationId}/messages`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+
+    const data = await res.json()
+
+    if (!res.ok) {
+      throw new Error(data?.detail ?? 'Не удалось загрузить сообщения')
+    }
+
+    messages.value = data
+    await scrollToBottom()
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'Ошибка загрузки сообщений'
+  }
+}
+
+async function selectConversation(conversationId: number) {
+  if (activeConversationId.value === conversationId) return
+
+  activeConversationId.value = conversationId
+  await fetchMessages(conversationId)
+}
+
+async function sendMessage() {
+  if (!canSend.value || !activeConversationId.value) return
+
+  const content = input.value.trim()
+  if (!content) return
+
+  error.value = ''
+  sending.value = true
+
+  try {
+    const res = await fetch(`${API}/conversations/${activeConversationId.value}/send`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ content }),
+    })
+
+    const data = await res.json()
+
+    if (!res.ok) {
+      throw new Error(data?.detail ?? 'Не удалось отправить сообщение')
+    }
+
+    input.value = ''
+    await fetchMessages(activeConversationId.value)
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'Ошибка отправки сообщения'
   } finally {
     sending.value = false
-    await scrollToBottom()
   }
+}
+
+function handleEnter(event: KeyboardEvent) {
+  if (event.shiftKey) return
+  sendMessage()
+}
+
+function formatDate(value: string) {
+  const date = new Date(value)
+  return date.toLocaleDateString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+  })
 }
 
 async function scrollToBottom() {
   await nextTick()
-  const el = windowRef.value
-  if (!el) return
-  el.scrollTop = el.scrollHeight
+  if (messagesContainer.value) {
+    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+  }
 }
 
-onMounted(scrollToBottom)
+onMounted(async () => {
+  await fetchConversations()
+})
 </script>
-
-<style scoped lang="scss">
-@use "../assets/styles/variables" as v;
-
-.chat {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-
-  &__top {
-    display: flex;
-    justify-content: space-between;
-    gap: 16px;
-    align-items: flex-start;
-  }
-
-  &__top-actions {
-    display: flex;
-    gap: 12px;
-  }
-
-  &__window {
-    height: min(56vh, 520px);
-    overflow: auto;
-    border: 1px solid rgba(0,0,0,0.08);
-    border-radius: 18px;
-    background: rgba(255,255,255,0.75);
-    padding: 14px;
-  }
-
-  &__msg {
-    display: flex;
-    margin: 10px 0;
-
-    &--user { justify-content: flex-end; }
-    &--assistant { justify-content: flex-start; }
-  }
-
-  &__bubble {
-    width: min(560px, 92%);
-    border-radius: 18px;
-    padding: 12px 14px;
-    border: 1px solid rgba(0,0,0,0.08);
-    background: rgba(255,255,255,0.92);
-  }
-
-  &__msg--user .chat__bubble {
-    background: rgba(99, 102, 241, 0.10);
-    border-color: rgba(99, 102, 241, 0.25);
-  }
-
-  &__role {
-    font-size: 12px;
-    color: v.$muted;
-    margin-bottom: 6px;
-  }
-
-  &__text {
-    white-space: pre-wrap;
-    line-height: 1.45;
-    color: v.$text;
-  }
-
-  &__composer {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    gap: 12px;
-    align-items: center;
-  }
-
-  &__input {
-    width: 100%;
-    padding: 12px 14px;
-    border-radius: 14px;
-    border: 1px solid rgba(0, 0, 0, 0.16);
-    background: rgba(255, 255, 255, 0.95);
-    font-size: 14px;
-    outline: none;
-    transition: 0.15s ease;
-  }
-
-  &__input:focus {
-    border-color: rgba(99, 102, 241, 0.9);
-    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.18);
-  }
-
-  &__hint {
-    font-size: 12px;
-    color: v.$muted;
-
-    code {
-      padding: 2px 6px;
-      border-radius: 10px;
-      border: 1px solid rgba(0,0,0,0.08);
-      background: rgba(255,255,255,0.8);
-    }
-  }
-}
-</style>
+<style src="../assets/styles/pages/chat.scss" lang="scss"></style>
