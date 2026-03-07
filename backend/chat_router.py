@@ -2,9 +2,22 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import List, Literal, Optional
 import os
+import ssl
 from sqlalchemy.orm import Session
 
 from database import get_db
+
+# Workaround для SSL UNEXPECTED_EOF_WHILE_READING при работе с GigaChat API
+# (сервер может закрывать соединение без close_notify, OpenSSL 3.0 строже это проверяет)
+if hasattr(ssl, "OP_IGNORE_UNEXPECTED_EOF"):
+    _orig_create_default = ssl.create_default_context
+
+    def _patched_create_default(purpose=ssl.Purpose.SERVER_AUTH, cafile=None, capath=None, cadata=None):
+        ctx = _orig_create_default(purpose, cafile, capath, cadata)
+        ctx.options |= ssl.OP_IGNORE_UNEXPECTED_EOF
+        return ctx
+
+    ssl.create_default_context = _patched_create_default
 from models import Conversation, Message as DBMessage, User
 from schemas import ConversationCreate, ConversationOut, MessageCreate, MessageOut
 from auth_router import get_current_user
@@ -92,6 +105,24 @@ def get_conversations(
         .all()
     )
     return conversations
+
+
+@router.delete("/conversations/{conversation_id}", status_code=204)
+def delete_conversation(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    conversation = (
+        db.query(Conversation)
+        .filter(Conversation.id == conversation_id, Conversation.user_id == user.id)
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Чат не найден")
+    db.delete(conversation)
+    db.commit()
+    return None
 
 
 @router.get("/conversations/{conversation_id}/messages", response_model=list[MessageOut])
