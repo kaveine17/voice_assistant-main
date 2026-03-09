@@ -19,7 +19,7 @@ if hasattr(ssl, "OP_IGNORE_UNEXPECTED_EOF"):
 
     ssl.create_default_context = _patched_create_default
 from models import Conversation, Message as DBMessage, User
-from schemas import ConversationCreate, ConversationOut, MessageCreate, MessageOut
+from schemas import ConversationCreate, ConversationOut, ConversationUpdate, MessageCreate, MessageOut
 from auth_router import get_current_user
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -97,6 +97,7 @@ class SendMessageResponse(BaseModel):
     reply: str
     user_message_id: int
     assistant_message_id: int
+    conversation_title: str
 
 
 def ask_gigachat(messages: List[dict], temperature: float = 0.7) -> str:
@@ -121,6 +122,42 @@ def ask_gigachat(messages: List[dict], temperature: float = 0.7) -> str:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def generate_conversation_title(first_user_message: str) -> str:
+    """
+    Генерация короткого названия чата по первому сообщению пользователя.
+    Пытаемся использовать GigaChat, при ошибке — простой fallback.
+    """
+    text = first_user_message.strip()
+    if not text:
+        return "Новый чат"
+
+    system_prompt = (
+        "Ты придумываешь КОРОТКИЕ, ёмкие названия для чатов на русском языке. "
+        "Используй не больше 5–6 слов. "
+        "Не добавляй кавычки и лишние комментарии, возвращай только название."
+    )
+
+    try:
+        title = ask_gigachat(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": f"Придумай название для чата по этому сообщению: {text}",
+                },
+            ],
+            temperature=0.3,
+        )
+        title = (title or "").strip()
+        if not title:
+            raise ValueError("empty title")
+        return title[:255]
+    except Exception:
+        # Fallback: усечённое первое сообщение
+        short = text[:60].strip()
+        return short or "Новый чат"
+
+
 @router.post("/chat")
 def chat(req: ChatRequest):
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
@@ -135,9 +172,10 @@ def create_conversation(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    title = (data.title or "").strip()
     conversation = Conversation(
         user_id=user.id,
-        title=data.title.strip() or "Новый чат",
+        title=title or "Новый чат",
     )
     db.add(conversation)
     db.commit()
@@ -175,6 +213,34 @@ def delete_conversation(
     db.delete(conversation)
     db.commit()
     return None
+
+
+@router.patch("/conversations/{conversation_id}", response_model=ConversationOut)
+def rename_conversation(
+    conversation_id: int,
+    data: ConversationUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    conversation = (
+        db.query(Conversation)
+        .filter(Conversation.id == conversation_id, Conversation.user_id == user.id)
+        .first()
+    )
+
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Чат не найден")
+
+    new_title = data.title.strip()
+    if not new_title:
+        raise HTTPException(status_code=400, detail="Название чата не может быть пустым")
+
+    conversation.title = new_title[:255]
+    db.add(conversation)
+    db.commit()
+    db.refresh(conversation)
+
+    return conversation
 
 
 @router.get("/conversations/{conversation_id}/messages", response_model=list[MessageOut])
@@ -287,8 +353,21 @@ def send_message(
     db.commit()
     db.refresh(assistant_message)
 
+    # 6. автоназвание чата по первому сообщению, если ещё не переименован
+    if conversation.title in ("Новый чат", "", None):
+        try:
+            auto_title = generate_conversation_title(first_user_message=content)
+            conversation.title = auto_title
+            db.add(conversation)
+            db.commit()
+            db.refresh(conversation)
+        except Exception:
+            # Не критично, если автоназвание не удалось — просто оставляем старый title
+            pass
+
     return SendMessageResponse(
         reply=assistant_reply,
         user_message_id=user_message.id,
         assistant_message_id=assistant_message.id,
+        conversation_title=conversation.title,
     )

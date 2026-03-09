@@ -23,7 +23,11 @@ class MeOut(BaseModel):
 
 
 class ConversationCreate(BaseModel):
-    title: str = Field(default="Новый чат", min_length=1, max_length=255)
+    title: str = Field(default="Новый чат", max_length=255)
+
+
+class ConversationUpdate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
 
 
 class ConversationOut(BaseModel):

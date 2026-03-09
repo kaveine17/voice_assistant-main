@@ -54,10 +54,19 @@
         >
           ☰
         </button>
-        <div>
+        <div class="chat-main__header-title">
           <h1 class="chat-main__title">
             {{ activeConversationTitle || 'Чат ассистента' }}
           </h1>
+          <button
+            v-if="activeConversationId"
+            type="button"
+            class="chat-main__rename-btn"
+            title="Переименовать чат"
+            @click="renameActiveConversation"
+          >
+            ✎
+          </button>
           <p class="chat-main__subtitle">
             История сохраняется отдельно для каждого чата
           </p>
@@ -348,6 +357,13 @@ async function sendMessage() {
     }
 
     await fetchMessages(activeConversationId.value)
+
+    if (data?.conversation_title) {
+      const conv = conversations.value.find((c) => c.id === activeConversationId.value)
+      if (conv) {
+        conv.title = data.conversation_title
+      }
+    }
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Ошибка отправки сообщения'
     // Убираем оптимистичное сообщение при ошибке
@@ -372,6 +388,36 @@ function toggleVoiceInput() {
     stopRecording()
   } else {
     startRecording()
+  }
+}
+
+async function renameActiveConversation() {
+  if (!activeConversationId.value) return
+
+  const currentTitle = activeConversationTitle.value || 'Новый чат'
+  const newTitle = window.prompt('Название чата', currentTitle)
+  if (!newTitle) return
+
+  error.value = ''
+  try {
+    const res = await fetch(`${API}/conversations/${activeConversationId.value}`, {
+      method: 'PATCH',
+      headers: authHeaders(),
+      body: JSON.stringify({ title: newTitle }),
+    })
+
+    const data = await res.json()
+
+    if (!res.ok) {
+      throw new Error(data?.detail ?? 'Не удалось переименовать чат')
+    }
+
+    const idx = conversations.value.findIndex((c) => c.id === data.id)
+    if (idx !== -1) {
+      conversations.value[idx] = data
+    }
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'Ошибка переименования чата'
   }
 }
 
