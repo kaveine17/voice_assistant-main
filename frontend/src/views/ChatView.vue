@@ -56,17 +56,19 @@
         </button>
         <div class="chat-main__header-title">
           <h1 class="chat-main__title">
-            {{ activeConversationTitle || 'Чат ассистента' }}
+            <span class="chat-main__title-text">
+              {{ activeConversationTitle || 'Чат ассистента' }}
+            </span>
+            <button
+              v-if="activeConversationId"
+              type="button"
+              class="chat-main__rename-btn"
+              title="Переименовать чат"
+              @click="renameActiveConversation"
+            >
+              ✎
+            </button>
           </h1>
-          <button
-            v-if="activeConversationId"
-            type="button"
-            class="chat-main__rename-btn"
-            title="Переименовать чат"
-            @click="renameActiveConversation"
-          >
-            ✎
-          </button>
           <p class="chat-main__subtitle">
             История сохраняется отдельно для каждого чата
           </p>

@@ -15,12 +15,13 @@ $breakpoint-tablet: 900px;
 $breakpoint-mobile: 600px;
 
 .chat-page {
-  min-height: calc(100svh - 73px);
+  height: calc(100svh - 73px);
   display: grid;
   grid-template-columns: $sidebar-width 1fr;
   gap: 20px;
   padding: 24px;
   position: relative;
+  overflow-y: hidden;
 }
 
 .chat-sidebar-overlay {
@@ -183,6 +184,12 @@ $breakpoint-mobile: 600px;
     gap: 12px;
   }
 
+  &__header-title {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
   &__menu-btn {
     display: none;
     flex-shrink: 0;
@@ -205,15 +212,48 @@ $breakpoint-mobile: 600px;
   }
 
   &__title {
-    margin: 0 0 6px;
+    margin: 0;
     color: v.$text;
     font-size: 28px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  &__title-text {
+    display: inline-block;
   }
 
   &__subtitle {
     margin: 0;
     color: v.$muted;
     font-size: 14px;
+  }
+
+  &__rename-btn {
+    border: none;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    color: v.$muted;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s ease, transform 0.15s ease;
+  }
+
+  &__rename-btn:hover {
+    color: v.$text;
+    transform: translateY(1px);
+  }
+
+  &__rename-btn:focus-visible {
+    outline: 2px solid rgba(99, 102, 241, 0.6);
+    outline-offset: 2px;
+    border-radius: 999px;
   }
 
   &__messages {
@@ -237,7 +277,7 @@ $breakpoint-mobile: 600px;
 
   &__input-row {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     gap: 10px;
     margin-bottom: 14px;
   }
@@ -253,6 +293,9 @@ $breakpoint-mobile: 600px;
     font-family: inherit;
     outline: none;
     transition: 0.2s ease;
+    height: 48px;
+    max-height: 48px;
+    overflow-y: hidden;
   }
 
   &__voice-btn {
@@ -436,11 +479,18 @@ $breakpoint-mobile: 600px;
 
   .chat-main__input-row {
     gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
   }
 
   .chat-main__input {
-    padding: 12px 14px;
+    padding: 10px 14px;
     font-size: 16px; /* предотвращает зум на iOS при фокусе */
+    height: 44px;
+    max-height: 44px;
+    width: 100%;
+    flex-basis: 100%;
+    overflow-y: hidden;
   }
 
   .chat-main__voice-btn {

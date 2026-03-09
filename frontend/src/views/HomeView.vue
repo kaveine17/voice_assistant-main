@@ -5,7 +5,7 @@
 
       <h1 class="title">Интеллектуальный персональный ассистент</h1>
       <p class="subtitle">
-        Голосовое управление + чат. Сейчас собираем UI, дальше подключим STT API и ChatGPT API.
+        Голосовое управление + чат. Подключен Gigachat & STT.
       </p>
 
       <div class="actions">
@@ -16,7 +16,7 @@
 
       <div class="meta">
         <span>Vue 3 + Vite</span>
-        <span>FastAPI (позже)</span>
+        <span>FastAPI</span>
         <span>PostgreSQL</span>
         <span>STT + LLM</span>
       </div>
