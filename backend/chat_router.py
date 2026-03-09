@@ -25,6 +25,58 @@ from auth_router import get_current_user
 router = APIRouter(prefix="/api", tags=["api"])
 
 
+# ---------------- PUNCTUATION VIA GIGACHAT ----------------
+class PunctuateIn(BaseModel):
+    text: str = Field(min_length=1)
+
+
+class PunctuateOut(BaseModel):
+    text: str
+
+
+@router.post("/punctuate", response_model=PunctuateOut)
+def punctuate(req: PunctuateIn):
+    """
+    Восстановление пунктуации через LLM (GigaChat).
+    На входе "сырой" текст распознавания, на выходе — тот же текст
+    с расставленными запятыми, вопросительными/восклицательными знаками и т.п.
+    """
+    text = req.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Текст пустой")
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Ты помощник, который расставляет знаки препинания в русском тексте. "
+                "Ничего не переводишь и не переписываешь, только: "
+                "1) расставляешь запятые, точки, вопросительные, восклицательные знаки и тире; "
+                "2) при необходимости ставишь заглавную букву в начале предложения; "
+                "3) возвращаешь ТОЛЬКО исправленный текст, без пояснений и кавычек."
+            ),
+        },
+        {
+            "role": "user",
+            "content": text,
+        },
+    ]
+
+    try:
+        punctuated = ask_gigachat(messages=messages, temperature=0.1)
+    except HTTPException:
+        # пробрасываем HTTP-ошибки наверх (например, проблемы с GigaChat)
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # небольшой safety: если LLM вдруг вернёт мусор, подстрахуемся исходным текстом
+    if not isinstance(punctuated, str) or not punctuated.strip():
+        punctuated = text
+
+    return PunctuateOut(text=punctuated.strip())
+
+
 # ---------------- EXISTING CHAT REQUEST TO GIGACHAT ----------------
 class ChatMessage(BaseModel):
     role: Literal["system", "user", "assistant"]

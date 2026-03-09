@@ -375,6 +375,40 @@ function toggleVoiceInput() {
   }
 }
 
+async function normalizeTranscript(text: string): Promise<string> {
+  const t = text.trim()
+  if (!t) return t
+
+  try {
+    const res = await fetch(`${API}/punctuate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text: t }),
+    })
+
+    if (!res.ok) {
+      throw new Error('failed')
+    }
+
+    const data = await res.json()
+    if (data?.text && typeof data.text === 'string') {
+      return data.text
+    }
+  } catch {
+    // fallback — простая локальная нормализация
+    let local = t.replace(/\s+/g, ' ')
+    local = local[0].toUpperCase() + local.slice(1)
+    if (!/[.!?…]$/.test(local)) {
+      local += '.'
+    }
+    return local
+  }
+
+  return t
+}
+
 function startRecording() {
   if (!SpeechRecognitionAPI || !activeConversationId.value) return
   recognition = new (SpeechRecognitionAPI as new () => SpeechRecognition)()
@@ -382,14 +416,17 @@ function startRecording() {
   recognition.interimResults = true
   recognition.lang = 'ru-RU'
   recognition.onresult = (event: SpeechRecognitionEvent) => {
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      if (event.results[i].isFinal) {
-        const transcript = event.results[i][0].transcript
-        if (transcript) {
-          input.value = (input.value + (input.value ? ' ' : '') + transcript).trim()
+    (async () => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          const raw = event.results[i][0].transcript
+          const transcript = await normalizeTranscript(raw)
+          if (transcript) {
+            input.value = (input.value + (input.value ? ' ' : '') + transcript).trim()
+          }
         }
       }
-    }
+    })()
   }
   recognition.onerror = (e: SpeechRecognitionErrorEvent) => {
     if (e.error !== 'aborted' && e.error !== 'no-speech') {
