@@ -479,7 +479,7 @@ $breakpoint-mobile: 600px;
 
   .chat-main__input-row {
     gap: 8px;
-    align-items: center;
+    align-items: flex-end;
     flex-wrap: wrap;
   }
 
@@ -488,14 +488,15 @@ $breakpoint-mobile: 600px;
     font-size: 16px; /* предотвращает зум на iOS при фокусе */
     height: 44px;
     max-height: 44px;
-    width: 100%;
-    flex-basis: 100%;
     overflow-y: hidden;
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .chat-main__voice-btn {
     width: 44px;
     height: 44px;
+    flex: 0 0 auto;
   }
 
   .chat-main__voice-icon {
@@ -505,6 +506,8 @@ $breakpoint-mobile: 600px;
 
   .chat-main__send-btn {
     height: 44px;
+    flex: 1 0 100%;
+    margin-top: 8px;
   }
 
   .chat-message__bubble {
